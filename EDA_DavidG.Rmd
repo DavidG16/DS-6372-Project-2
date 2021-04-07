@@ -1,0 +1,342 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+Import Libraries
+```{r message=FALSE, warning=FALSE}
+library(aplore3)
+library(caret)
+library(dplyr)
+library(tidyverse)
+library(car)
+require(ggthemes)
+library(glmnet)
+library(cowplot)
+library(ROCR)
+library(GGally)
+library(ResourceSelection)
+```
+
+#Import Data
+```{r}
+data = glow_bonemed 
+data = data.frame(data)
+dim(data)
+```
+
+#Split train and test set
+```{r}
+set.seed(66)
+trainIndex <- createDataPartition(data$fracture, p = .8, 
+                                  list = FALSE, 
+                                  times = 1)
+train <- data[trainIndex,]
+test  <- data[-trainIndex,]
+dim(train)
+dim(test)
+```
+
+# Objective do EDA and Simple Model
+# EDA
+
+
+All of the EDA will be done in the train data
+
+View head of dataframe
+```{r}
+head(train)
+```
+Looking at Fracture balance
+```{r}
+# look for class imbalance
+# The dataset is hevaily imbalance with more No's than Yes
+
+data_classes = data %>% ggplot(aes(x=fracture)) + geom_bar() + theme_fivethirtyeight()
+train_classes = train %>% ggplot(aes(x=fracture)) + geom_bar() + theme_fivethirtyeight()
+test_classes = test %>% ggplot(aes(x=fracture)) + geom_bar() + theme_fivethirtyeight()
+
+plot_grid(data_classes, train_classes, test_classes, labels = c("Overall Data", "Train Data", "Test Data"))
+
+```
+
+
+Let's look at pair plots from all the numeric variables
+```{r}
+train_numeric = train %>% select_if(is.numeric)
+pairs(train[,2:8],col=as.factor(train$fracture))
+```
+Looking at a different view of pair plots for numerical variables. Excluding id's  
+```{r message=FALSE, warning=FALSE}
+ggpairs(train,columns=4:8,aes(colour=fracture))
+```
+Looking at box plot for different numerical variables per fracture or not
+```{r}
+boxplot_age = train %>% ggplot(aes(y=age, x=fracture)) + geom_boxplot() + ggtitle("age vs fracture") + theme_fivethirtyeight()
+
+boxplot_weight = train %>% ggplot(aes(y=weight, x=fracture)) + geom_boxplot() + ggtitle("weight vs fracture")  + theme_fivethirtyeight()
+
+boxplot_height = train %>% ggplot(aes(y=height, x=fracture)) + geom_boxplot() + ggtitle("height vs fracture") + theme_fivethirtyeight()
+
+boxplot_bmi= train %>% ggplot(aes(y=bmi, x=fracture)) + geom_boxplot() + ggtitle("bmi vs fracture")  + theme_fivethirtyeight()
+
+boxplot_fracscore= train %>% ggplot(aes(y=fracscore, x=fracture)) + geom_boxplot() + ggtitle("bmi vs fracture")  + theme_fivethirtyeight()
+
+plot_grid(boxplot_age, boxplot_weight, boxplot_height, boxplot_bmi, boxplot_fracscore, nrow=2, ncol=2)
+```
+Lets look at bmi vs age per different categorical variables
+```{r fig.height=10, fig.width=5}
+# relation of bmi and age
+
+age_bim_fracture = train %>% ggplot(aes(x=age, y=bmi, col=fracture)) + geom_point() + geom_smooth(method = 'loess' , formula = 'y ~ x'
+) + ggtitle("bmi vs age") + xlab("age") + ylab("bmi") + theme_minimal() 
+
+age_bim_premeno = train %>% ggplot(aes(x=age, y=bmi, col=premeno)) + geom_point() + geom_smooth(method = 'loess' , formula = 'y ~ x'
+) + ggtitle("bmi vs age") + xlab("age") + ylab("bmi") + theme_minimal() 
+
+age_bim_smoke = train %>% ggplot(aes(x=age, y=bmi, col=raterisk)) + geom_point() + geom_smooth(method = 'loess' , formula = 'y ~ x'
+) + ggtitle("bmi vs age") + xlab("age") + ylab("bmi") + theme_minimal() 
+
+age_bim_raterisk = train %>% ggplot(aes(x=age, y=bmi, col=smoke)) + geom_point() + geom_smooth(method = 'loess' , formula = 'y ~ x'
+) + ggtitle("bmi vs age") + xlab("age") + ylab("bmi") + theme_minimal() 
+
+plot_grid(age_bim_fracture, age_bim_premeno,age_bim_smoke, age_bim_raterisk, nrow=4, ncol=1)
+
+```
+
+Lets look at different numerica variables vs categorical variables per site id
+The point os to investigate if site id had any impact
+```{r fig.height=5, fig.width=5, message=FALSE, warning=FALSE}
+bmi_frac_type = train %>% ggplot(aes(x=fracture, y=bmi, col=as.factor(site_id))) + geom_boxplot() + ggtitle("BMI for fracture type per site id")
+
+age_frac_type = train %>% ggplot(aes(x=fracture, y=age, col=as.factor(site_id))) + geom_boxplot() + ggtitle("Age for fracture type per site id")
+
+weight_frac_type = train %>% ggplot(aes(x=fracture, y=weight, col=as.factor(site_id))) + geom_boxplot() + ggtitle("Weight for fracture type per site id")
+
+height_frac_type = train %>% ggplot(aes(x=fracture, y=height, col=as.factor(site_id))) + geom_boxplot() + ggtitle("Height for fracture type per site id")
+
+plot_grid(bmi_frac_type, age_frac_type, weight_frac_type,height_frac_type, nrow=2, ncol=2)
+```
+
+# Build a new model
+
+Lets train an interpretable logistic regression using the lasso technique
+The point of this model is to be interpretable, meaning no exotic variables such as iteraction terms
+
+```{r}
+
+## removed sub_id site_id phy_id
+train.x <- model.matrix(fracture~ site_id + phy_id + priorfrac + age + weight + height + bmi + premeno + momfrac + armassist + smoke+ raterisk + fracscore + bonemed + bonemed_fu + bonetreat, train)
+
+train.y<-train[,15]
+
+
+nFolds = 10 
+set.seed(3)
+foldid  = sample(rep(seq(nFolds), length.out = nrow(train.x)))
+lambdas_to_try <- 10^seq(-3, 5, length.out = 2000)
+set.seed(3)               
+cvfit = cv.glmnet(train.x, train.y, 
+                   family = "binomial", 
+                   type.measure = "class", 
+                   lambda = lambdas_to_try, 
+                   nfolds = nFolds, 
+                   foldid = foldid)
+
+plot(cvfit)
+
+coef(cvfit, s = "lambda.min")
+
+print("CV Error Rate:")
+cvfit$cvm[which(cvfit$lambda==cvfit$lambda.min)]
+
+#Optimal penalty
+print("Penalty Value:")
+cvfit$lambda.min
+```
+
+build a final interpretable model based on feature selection and lambda value selected above
+```{r}
+#For final model predictions go ahead and refit lasso using entire
+#data set
+#finalmodel = glmnet(train.x, train.y, family = "binomial",lambda=cvfit$lambda.min)
+finalmodel<-glm(fracture ~ site_id + priorfrac + height + bmi + premeno + momfrac + 
+                  smoke + raterisk + raterisk + fracscore + bonemed +
+                  bonemed_fu + bonetreat
+                  , data=train,family = binomial(link="logit"))
+coef(finalmodel)
+confint(finalmodel)
+summary(finalmodel)
+```
+```{r}
+(vif(finalmodel)[,3])^2
+vif(finalmodel)
+```
+
+
+```{r}
+plot(finalmodel)
+```
+
+
+lets look at predictions for the lasso model
+also looking at the roc plot to select the most optimal threhold for classification
+```{r}
+## removed sub_id 
+test.x = model.matrix(fracture~site_id+phy_id+priorfrac+age+weight+height+bmi+premeno+momfrac+armassist+ smoke+raterisk + fracscore +bonemed+bonemed_fu+bonetreat, test)
+
+fit.pred.lasso = predict(finalmodel, newdata = test, type = "response")
+```
+
+```{r}
+hoslem.test(finalmodel$y, fitted(finalmodel), g=10)
+```
+
+There is a large p-value so the test is a fit
+
+```{r}
+results.lasso = prediction(fit.pred.lasso, test$fracture, 
+                           label.ordering=c("No","Yes"))
+
+
+```
+
+
+```{r}
+roc.lasso = performance(results.lasso, measure = "tpr", x.measure = "fpr")
+plot(roc.lasso,colorize = TRUE)
+abline(a=0, b= 1)
+```
+
+
+
+lets look at model performance metrics
+```{r}
+cutoff<-0.3
+class.lasso<-factor(ifelse(fit.pred.lasso>cutoff,"Yes","No"),levels=c("No","Yes"))
+
+
+#Confusion Matrix for Lasso
+conf.lasso<-table(class.lasso,test$fracture)
+print("Confusion matrix for LASSO")
+conf.lasso
+precision <- posPredValue(class.lasso, test$fracture, positive="Yes")
+recall <- sensitivity(class.lasso, test$fracture, positive="Yes")
+F1 <- (2 * precision * recall) / (precision + recall)
+print("accuracy")
+mean(class.lasso==test$fracture)
+print("precision")
+precision
+print("recall")
+recall
+print("F1")
+F1
+```
+
+# Stepwise regression
+
+```{r}
+library(leaps)
+nvmax = 17
+reg_sq=regsubsets(fracture~.-sub_id,data=train, method="seqrep", nvmax=nvmax)
+```
+
+```{r}
+par(mfrow=c(2,2))
+cp<-summary(reg_sq)$cp
+plot(1:(nvmax),cp,type="l",ylab="CP",xlab="# of predictors")
+index<-which(cp==min(cp))
+points(index,cp[index],col="red",pch=10)
+bics<-summary(reg_sq)$bic
+plot(1:(nvmax),bics,type="l",ylab="BIC",xlab="# of predictors")
+index<-which(bics==-0.05839447)
+points(index,bics[index],col="red",pch=10)
+adjr2<-summary(reg_sq)$adjr2
+plot(1:(nvmax),adjr2,type="l",ylab="Adjusted R-squared",xlab="# of predictors")
+index<-which(adjr2==max(adjr2))
+points(index,adjr2[index],col="red",pch=10)
+rss<-summary(reg_sq)$rss
+plot(1:(nvmax),rss,type="l",ylab="train RSS",xlab="# of predictors")
+index<-which(rss==min(rss))
+points(index,rss[index],col="red",pch=10)
+```
+
+```{r}
+
+cbind(CP=summary(reg_sq)$cp,
+      r2=summary(reg_sq)$rsq,
+      Adj_r2=summary(reg_sq)$adjr2,
+      BIC=summary(reg_sq)$bic,
+      RSS = summary(reg_sq)$rss)
+```
+
+
+```{r}
+coef(reg_sq, 10)
+```
+
+
+
+
+```{r}
+#To deal with the redundamcy, I would throw the cylinder variable out and then see what happens
+model.main<-glm(fracture ~priorfrac+weight+bmi+premeno+momfrac+smoke+fracscore+bonemed+bonemed_fu+bonetreat, data=train,family = binomial(link="logit"))
+summary(model.main)
+exp(cbind("Odds ratio" = coef(model.main), confint.default(model.main, level = 0.95)))
+vif(model.main)
+```
+
+```{r}
+#Residual diagnostics can be obtained using
+plot(model.main)
+
+```
+
+
+```{r}
+fit.pred.step = predict(model.main, newdata = test, type = "response")
+
+```
+
+```{r}
+results.step = prediction(fit.pred.step, test$fracture, 
+                           label.ordering=c("No","Yes"))
+
+
+```
+
+
+```{r}
+roc.step = performance(results.step, measure = "tpr", x.measure = "fpr")
+plot(roc.step, colorize = TRUE)
+abline(a=0, b= 1)
+```
+
+
+
+lets look at model performance metrics
+```{r}
+cutoff<-0.3
+class.step<-factor(ifelse(fit.pred.step>cutoff,"Yes","No"),levels=c("No","Yes"))
+
+
+#Confusion Matrix for Lasso
+conf.step<-table(class.step,test$fracture)
+print("Confusion matrix for LASSO")
+conf.step
+precision <- posPredValue(class.step, test$fracture, positive="Yes")
+recall <- sensitivity(class.step, test$fracture, positive="Yes")
+F1 <- (2 * precision * recall) / (precision + recall)
+print("accuracy")
+mean(class.step==test$fracture)
+print("precision")
+precision
+print("recall")
+recall
+print("F1")
+F1
+```
