@@ -7,7 +7,7 @@ This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute
 
 Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
 
-Import Libraries
+#Import Libraries
 ```{r message=FALSE, warning=FALSE}
 library(aplore3)
 library(caret)
@@ -17,9 +17,10 @@ library(car)
 require(ggthemes)
 library(glmnet)
 library(cowplot)
-library(ROCR)
 library(GGally)
 library(ResourceSelection)
+library(ROCR)
+library(pROC)
 ```
 
 #Import Data
@@ -27,6 +28,13 @@ library(ResourceSelection)
 data = glow_bonemed 
 data = data.frame(data)
 dim(data)
+```
+
+```{r}
+data$sub_id = as.factor(data$sub_id)
+data$site_id = as.factor(data$site_id)
+data$phy_id = as.factor(data$phy_id)
+
 ```
 
 #Split train and test set
@@ -122,6 +130,60 @@ height_frac_type = train %>% ggplot(aes(x=fracture, y=height, col=as.factor(site
 plot_grid(bmi_frac_type, age_frac_type, weight_frac_type,height_frac_type, nrow=2, ncol=2)
 ```
 
+#Functions 
+```{r}
+make_predictions = function(model, test){
+  fit.pred = predict(model, newdata = test, type = "response")
+  
+  results = prediction(fit.pred, test$fracture, 
+                           label.ordering=c("No","Yes"))
+  return(results)
+}
+
+classification_metrics = function(cutoff, model, model_type) {
+  fit.pred = predict(model, newdata = test, type = "response")
+  
+  class<-factor(ifelse(fit.pred>cutoff,"Yes","No"),levels=c("No","Yes"))
+  
+  #Confusion Matrix for Lasso
+  conf<-table(class,test$fracture)
+  print(paste("Confusion matrix for ", model_type))
+  print(conf)
+  precision <- posPredValue(class, test$fracture, positive="Yes")
+  recall <- sensitivity(class, test$fracture, positive="Yes")
+  F1 <- (2 * precision * recall) / (precision + recall)
+  print(paste("accuracy = ", round(mean(class==test$fracture) ,3), sep = ""))
+  print(paste("precision = ", round(precision ,3), sep = ""))
+  print(paste("recall = ", round(precision ,3), sep = ""))
+  print(paste("F1 = ", round(F1 ,3), sep = ""))
+
+
+}
+
+roc_metrics = function(pred_results){
+  
+  roc = performance(pred_results, measure = "tpr", x.measure = "fpr")
+  return(roc)
+}
+
+auc_metrics = function(pred_results) {
+  auc <- performance(pred_results , measure = "auc")
+  auc <- auc@y.values
+  return(auc)
+  
+}
+plot_roc = function (model_type, pred_results,x,y,c, ...) {
+  roc = roc_metrics(pred_results)
+  auc = auc_metrics(pred_results)
+  plot(roc, colorize = c, ...)
+  abline(a=0, b= 1)
+  text(x = x, y = y, paste(model_type," AUC = ", round(auc[[1]],3), sep = ""))
+}
+
+```
+
+
+
 # Build a new model
 
 Lets train an interpretable logistic regression using the lasso technique
@@ -129,8 +191,7 @@ The point of this model is to be interpretable, meaning no exotic variables such
 
 ```{r}
 
-## removed sub_id site_id phy_id
-train.x <- model.matrix(fracture~ site_id + phy_id + priorfrac + age + weight + height + bmi + premeno + momfrac + armassist + smoke+ raterisk + fracscore + bonemed + bonemed_fu + bonetreat, train)
+train.x <- model.matrix(fracture~  priorfrac + age + weight + height + bmi + premeno + momfrac + armassist + smoke+ raterisk + fracscore + bonemed + bonemed_fu + bonetreat, train)
 
 train.y<-train[,15]
 
@@ -164,7 +225,7 @@ build a final interpretable model based on feature selection and lambda value se
 #For final model predictions go ahead and refit lasso using entire
 #data set
 #finalmodel = glmnet(train.x, train.y, family = "binomial",lambda=cvfit$lambda.min)
-finalmodel<-glm(fracture ~ site_id + priorfrac + height + bmi + premeno + momfrac + 
+finalmodel<-glm(fracture ~  priorfrac + height + bmi + premeno + momfrac + armassist +
                   smoke + raterisk + raterisk + fracscore + bonemed +
                   bonemed_fu + bonetreat
                   , data=train,family = binomial(link="logit"))
@@ -172,6 +233,7 @@ coef(finalmodel)
 confint(finalmodel)
 summary(finalmodel)
 ```
+
 ```{r}
 (vif(finalmodel)[,3])^2
 vif(finalmodel)
@@ -189,60 +251,37 @@ also looking at the roc plot to select the most optimal threhold for classificat
 ## removed sub_id 
 test.x = model.matrix(fracture~site_id+phy_id+priorfrac+age+weight+height+bmi+premeno+momfrac+armassist+ smoke+raterisk + fracscore +bonemed+bonemed_fu+bonetreat, test)
 
-fit.pred.lasso = predict(finalmodel, newdata = test, type = "response")
 ```
 
 ```{r}
 hoslem.test(finalmodel$y, fitted(finalmodel), g=10)
+
 ```
 
 There is a large p-value so the test is a fit
 
 ```{r}
-results.lasso = prediction(fit.pred.lasso, test$fracture, 
-                           label.ordering=c("No","Yes"))
-
+preds_lasso = make_predictions(finalmodel, test)
+plot_roc("Lasso",preds_lasso,0.2,0.7,T)
 
 ```
-
-
-```{r}
-roc.lasso = performance(results.lasso, measure = "tpr", x.measure = "fpr")
-plot(roc.lasso,colorize = TRUE)
-abline(a=0, b= 1)
-```
-
-
 
 lets look at model performance metrics
 ```{r}
-cutoff<-0.3
-class.lasso<-factor(ifelse(fit.pred.lasso>cutoff,"Yes","No"),levels=c("No","Yes"))
+classification_metrics(0.3, finalmodel, "Lasso")
 
-
-#Confusion Matrix for Lasso
-conf.lasso<-table(class.lasso,test$fracture)
-print("Confusion matrix for LASSO")
-conf.lasso
-precision <- posPredValue(class.lasso, test$fracture, positive="Yes")
-recall <- sensitivity(class.lasso, test$fracture, positive="Yes")
-F1 <- (2 * precision * recall) / (precision + recall)
-print("accuracy")
-mean(class.lasso==test$fracture)
-print("precision")
-precision
-print("recall")
-recall
-print("F1")
-F1
 ```
+
+
+
+
 
 # Stepwise regression
 
 ```{r}
 library(leaps)
-nvmax = 17
-reg_sq=regsubsets(fracture~.-sub_id,data=train, method="seqrep", nvmax=nvmax)
+nvmax = 15
+reg_sq=regsubsets(fracture~.-sub_id-site_id-phy_id,data=train, method="seqrep", nvmax=nvmax)
 ```
 
 ```{r}
@@ -293,50 +332,21 @@ vif(model.main)
 ```{r}
 #Residual diagnostics can be obtained using
 plot(model.main)
-
 ```
-
-
 ```{r}
-fit.pred.step = predict(model.main, newdata = test, type = "response")
-
+preds_step = make_predictions(model.main, test)
+plot_roc("Step",preds_step,0.2,0.8,T)
 ```
-
-```{r}
-results.step = prediction(fit.pred.step, test$fracture, 
-                           label.ordering=c("No","Yes"))
-
-
-```
-
-
-```{r}
-roc.step = performance(results.step, measure = "tpr", x.measure = "fpr")
-plot(roc.step, colorize = TRUE)
-abline(a=0, b= 1)
-```
-
-
-
 lets look at model performance metrics
+
 ```{r}
-cutoff<-0.3
-class.step<-factor(ifelse(fit.pred.step>cutoff,"Yes","No"),levels=c("No","Yes"))
+classification_metrics(0.22, model.main, "Step")
+```
 
+```{r}
 
-#Confusion Matrix for Lasso
-conf.step<-table(class.step,test$fracture)
-print("Confusion matrix for LASSO")
-conf.step
-precision <- posPredValue(class.step, test$fracture, positive="Yes")
-recall <- sensitivity(class.step, test$fracture, positive="Yes")
-F1 <- (2 * precision * recall) / (precision + recall)
-print("accuracy")
-mean(class.step==test$fracture)
-print("precision")
-precision
-print("recall")
-recall
-print("F1")
-F1
+plot_roc("Step",preds_step,0.2,0.8,F, col="red")
+par(new=T)
+plot_roc("Lasso",preds_lasso,0.2,0.7,F, col="blue")
+legend(0.7, 0.3,legend = c("Step","Lasso"), fill=c("red","blue"))
 ```
