@@ -282,6 +282,15 @@ summary(finalmodel)
 ```
 
 ```{r}
+train.x <- model.matrix(fracture~  priorfrac + age + weight + height + bmi + premeno + momfrac + armassist + smoke+ raterisk + fracscore + bonemed + bonemed_fu, train)
+
+train.y<-train[,15]
+preds_lasso = make_predictions(finalmodel_lasso, train.x, train.y, "lasso")
+plot_roc("Lasso",preds_lasso,0.2,0.7,T)
+classification_metrics(0.3, finalmodel_lasso, "Lasso", train.x, train.y, "lasso")
+```
+
+```{r}
 
 vif(finalmodel)
 ```
@@ -309,12 +318,13 @@ test.x <- model.matrix(fracture~  priorfrac + age + weight + height + bmi + prem
 test.y<-test[,15]
 preds_lasso = make_predictions(finalmodel_lasso, test.x, test.y, "lasso")
 plot_roc("Lasso",preds_lasso,0.2,0.7,T)
+classification_metrics(0.3, finalmodel_lasso, "Lasso", test.x, test.y, "lasso")
 
 ```
 
 lets look at model performance metrics
 ```{r}
-classification_metrics(0.3, finalmodel_lasso, "Lasso", test.x, test.y, "lasso")
+
 
 ```
 
@@ -382,18 +392,24 @@ vif(model.main)
 #Residual diagnostics can be obtained using
 plot(model.main)
 ```
+```{r}
+train_select = subset(train, select = c(weight,bmi,premeno,momfrac,fracscore,bonemed_fu,smoke,raterisk,fracture))
+preds_step = make_predictions(model.main, train_select,train_select$fracture, "stepwise")
+plot_roc("Step",preds_step,0.2,0.8,T)
+classification_metrics(0.22, model.main, "Step", train_select,train_select$fracture, "stepwise")
 
+```
 
 ```{r}
 test_select = subset(test, select = c(weight,bmi,premeno,momfrac,fracscore,bonemed_fu,smoke,raterisk,fracture))
-test_select
 preds_step = make_predictions(model.main, test_select,test_select$fracture, "stepwise")
 plot_roc("Step",preds_step,0.2,0.8,T)
+classification_metrics(0.22, model.main, "Step", test_select,test_select$fracture, "stepwise")
 ```
 lets look at model performance metrics
 
 ```{r}
-classification_metrics(0.22, model.main, "Step", test_select,test_select$fracture, "stepwise")
+
 ```
 
 ```{r}
@@ -492,8 +508,8 @@ finalmode_ob2 = glmnet(train.x, train.y,
                    family = "binomial", 
                   alpha=1,
                    lambda = cvfit$lambda.min ) 
-summary(finalmodel_lasso)
-coef(finalmodel_lasso)
+summary(finalmode_ob2)
+coef(finalmode_ob2)
 finalmodel_lasso
 #coef(finalmode_ob2)
 #confint(finalmode_ob2)
@@ -502,11 +518,22 @@ summary(finalmode_ob2)
 ```
 
 ```{r}
+finalmode_ob2
+```
+
+
+```{r}
 preds_ob2_lr = make_predictions(finalmode_ob2, train.x, train.y,"lasso")
-plot_roc("Step",preds_ob2_lr,0.2,0.8,T)
+plot_roc("Complex Lasso",preds_ob2_lr,0.2,0.8,T)
+classification_metrics(0.20, finalmode_ob2, "Complex LR", train.x, train.y,"lasso")
 ```
 ```{r}
-classification_metrics(0.20, finalmode_ob2, "Complex LR", train.x, train.y,"lasso")
+test.x <- model.matrix(fracture~ .*. , test_transformed)
+
+test.y<-test_transformed[,12]
+preds_ob2_lr = make_predictions(finalmode_ob2, test.x, test.y,"lasso")
+plot_roc("Complex Lasso",preds_ob2_lr,0.2,0.8,T)
+classification_metrics(0.20, finalmode_ob2, "Complex LR", test.x, test.y,"lasso")
 ```
 ```{r}
 train
@@ -533,47 +560,22 @@ print(rpart_fit)
 ```
 
 ```{r}
-library(randomForest)
-
-final_rf = randomForest(fracture ~., data=train, mtry=8, ntree=8000,importance=T)
-final_rf
-```
 
 
-```{r}
-rpartPred_test <- predict(final_rf, test, type="prob")
-rpartPred_test[,2]
-```
-
-```{r}
-#rpartPred_test
-pred_rf = predict(rpartPred_test[,2], test$fracture)
-pred_rf
-#rpartPred_test
-#test_pred_obs = data.frame(obs=test$fracture, pred=rpartPred_test)
-#test_pred_obs
-```
-
-```{r}
-roc.perf = performance(rpartPred_test, measure = "tpr", x.measure = "fpr")
-auc.train <- performance(rpartPred_test, measure = "auc")
+preds_rf = make_predictions(model.main, train,train$fracture, "stepwise")
+plot_roc("RF",preds_rf,0.2,0.8,T)
+classification_metrics(0.22, model.main, "Step", train,train$fracture, "stepwise")
 
 ```
-
 ```{r}
 
-library(MLeval)
 
-#evalm(rpart_fit)
+preds_rf = make_predictions(model.main, test,test$fracture, "stepwise")
+plot_roc("RF",preds_rf,0.2,0.8,T)
+classification_metrics(0.22, model.main, "RF", test,test$fracture, "stepwise")
 
-#result.roc <- roc(test_pred_obs$obs, rpartPred_test$No) 
 ```
 
 
-```{r}
-library(MLmetrics)
-confusionMatrix(test_pred_obs$pred, test_pred_obs$obs, "Yes", mode = "prec_recall")
-postResample(pred = rpartPred_test, obs = test$fracture)
-prSummary(data = test_pred_obs, lev= c("Yes","No"), model=rpart_fit)
-```
-```
+
+
