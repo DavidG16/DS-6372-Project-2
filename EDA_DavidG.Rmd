@@ -22,6 +22,7 @@ library(ResourceSelection)
 library(ROCR)
 library(pROC)
 library(doParallel)
+library(qwraps2)
 ```
 
 
@@ -137,6 +138,107 @@ height_frac_type = train %>% ggplot(aes(x=fracture, y=height, col=as.factor(site
 
 plot_grid(bmi_frac_type, age_frac_type, weight_frac_type,height_frac_type, nrow=2, ncol=2)
 ```
+```{r}
+colnames(train)
+```
+
+```{r fig.height=10, fig.width=10}
+
+options(qwraps2_markup = "markdown")
+our_summary1 <-
+  list("Age" =
+       list("min"       = ~ min(age),
+            "median"    = ~ median(age),
+            "max"       = ~ max(age),
+            "mean (sd)" = ~ qwraps2::mean_sd(age)),
+       "Weight" =
+       list("min"       = ~ min(weight),
+            "median"    = ~ median(weight),
+            "max"       = ~ max(weight),
+            "mean (sd)" = ~ qwraps2::mean_sd(weight)),
+       "Height" =
+       list("min"       = ~ min(height),
+            "median"    = ~ median(height),
+            "max"       = ~ max(height),
+            "mean (sd)" = ~ qwraps2::mean_sd(height)),
+       "BMI" =
+        list("min"       = ~ min(bmi),
+             "median"    = ~ median(bmi),
+                "max"       = ~ max(bmi),
+                "mean (sd)" = ~ qwraps2::mean_sd(bmi)),
+        "Frac Score" =
+        list("min"       = ~ min(fracscore),
+             "median"    = ~ median(fracscore),
+                "max"       = ~ max(fracscore),
+                "mean (sd)" = ~ qwraps2::mean_sd(fracscore))
+       )
+
+summary_table(train, our_summary1)
+```
+```{r}
+
+our_summary1 <-
+  list("Age" =
+       list("min"       = ~ min(age),
+            "median"    = ~ median(age),
+            "max"       = ~ max(age),
+            "mean (sd)" = ~ qwraps2::mean_sd(age)),
+       "Weight" =
+       list("min"       = ~ min(weight),
+            "median"    = ~ median(weight),
+            "max"       = ~ max(weight),
+            "mean (sd)" = ~ qwraps2::mean_sd(weight)),
+       "Height" =
+       list("min"       = ~ min(height),
+            "median"    = ~ median(height),
+            "max"       = ~ max(height),
+            "mean (sd)" = ~ qwraps2::mean_sd(height)),
+       "BMI" =
+        list("min"       = ~ min(bmi),
+             "median"    = ~ median(bmi),
+                "max"       = ~ max(bmi),
+                "mean (sd)" = ~ qwraps2::mean_sd(bmi)),
+        "Frac Score" =
+        list("min"       = ~ min(fracscore),
+             "median"    = ~ median(fracscore),
+                "max"       = ~ max(fracscore),
+                "mean (sd)" = ~ qwraps2::mean_sd(fracscore))
+       )
+
+summary_table(dplyr::group_by(train,fracture), our_summary1)
+
+```
+```{r}
+
+options(qwraps2_markup = "markdown")
+our_summary1 <-
+  list("Age" =
+       list("min"       = ~ min(age),
+            "median"    = ~ median(age),
+            "max"       = ~ max(age),
+            "mean (sd)" = ~ qwraps2::mean_sd(age)),
+       "Weight" =
+       list("min"       = ~ min(weight),
+            "median"    = ~ median(weight),
+            "max"       = ~ max(weight),
+            "mean (sd)" = ~ qwraps2::mean_sd(weight)),
+       "Height" =
+       list("min"       = ~ min(height),
+            "median"    = ~ median(height),
+            "max"       = ~ max(height),
+            "mean (sd)" = ~ qwraps2::mean_sd(height)),
+       "BMI" =
+        list("min"       = ~ min(bmi),
+             "median"    = ~ median(bmi),
+                "max"       = ~ max(bmi),
+                "mean (sd)" = ~ qwraps2::mean_sd(bmi))
+       )
+
+summary_table(train, our_summary1)
+```
+
+```
+
 
 #Functions 
 ```{r}

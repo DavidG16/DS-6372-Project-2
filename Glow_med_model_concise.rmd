@@ -60,7 +60,7 @@ df <- glow_bonemed
 * Take a peek at the data set
 ```{r}
 bonemed <- df
-view(bonemed)
+#view(bonemed)
 str(bonemed)
 ncol(bonemed)
 describe(bonemed) # all columns have equal length so no missing value
