@@ -237,62 +237,61 @@ our_summary1 <-
 summary_table(train, our_summary1)
 ```
 
-```
 
 
 #Functions 
 ```{r}
 
-fit_pred = function(model, test_x, test_y, m){
+fit_pred = function(model, x, y, m){
   if(m=="lasso"){
-    fit.pred = predict(model, newx = test_x, type = "response")
+    fit.pred = predict(model, newx = x, type = "response")
     
   }
   if(m=="lda"){
-     fit.pred= predict(model, test_x, type = "prob")
+     fit.pred= predict(model, x, type = "prob")
      fit.pred = fit.pred[,2]
   }
   
   if(m=="rf"){
-     fit.pred= predict(model, test_x, type = "prob")
+     fit.pred= predict(model, x, type = "prob")
      fit.pred = fit.pred[,2]
   }
   
   if(m=="stepwise"){
-    fit.pred = predict(model, newdata  = test_x, type = "response")
+    fit.pred = predict(model, newdata  = x, type = "response")
 
     
   }
   return(fit.pred)
   
 }
-make_predictions = function(model, test_x, test_y, m){
+make_predictions = function(model, x, y, m){
   
-  fit.pred = fit_pred(model, test_x, test_y, m)
+  fit.pred = fit_pred(model, x, y, m)
  
   
   
-  results = prediction(fit.pred, test_y, 
+  results = prediction(fit.pred, y, 
                            label.ordering=c("No","Yes"))
   return(results)
 }
 
-classification_metrics = function(cutoff, model, model_type, test_x, test_y, m) {
+classification_metrics = function(cutoff, model, model_type, x, y, m) {
   
-  fit.pred = fit_pred(model, test_x, test_y, m)
+  fit.pred = fit_pred(model, x, y, m)
  
   
   
   class<-factor(ifelse(fit.pred>cutoff,"Yes","No"),levels=c("No","Yes"))
   
   #Confusion Matrix for Lasso
-  conf<-table(class,test_y)
+  conf<-table(class,y)
   print(paste("Confusion matrix for ", model_type))
   print(conf)
-  precision <- posPredValue(class, test_y, positive="Yes")
-  recall <- sensitivity(class, test_y, positive="Yes")
+  precision <- posPredValue(class, y, positive="Yes")
+  recall <- sensitivity(class, y, positive="Yes")
   F1 <- (2 * precision * recall) / (precision + recall)
-  print(paste("accuracy = ", round(mean(class==test_y) ,3), sep = ""))
+  print(paste("accuracy = ", round(mean(class==y) ,3), sep = ""))
   print(paste("precision = ", round(precision ,3), sep = ""))
   print(paste("recall = ", round(precision ,3), sep = ""))
   print(paste("F1 = ", round(F1 ,3), sep = ""))
@@ -398,7 +397,7 @@ train.x <- model.matrix(fracture~  priorfrac + age + weight + height + bmi + pre
 train.y<-train[,15]
 preds_lasso = make_predictions(finalmodel_lasso, train.x, train.y, "lasso")
 plot_roc("Lasso",preds_lasso,0.2,0.7,T)
-classification_metrics(0.3, finalmodel_lasso, "Lasso", train.x, train.y, "lasso")
+classification_metrics(0.22, finalmodel_lasso, "Lasso", train.x, train.y, "lasso")
 ```
 
 ```{r}
@@ -636,7 +635,7 @@ finalmode_ob2
 ```{r}
 preds_ob2_lr = make_predictions(finalmode_ob2, train.x, train.y,"lasso")
 plot_roc("Complex Lasso",preds_ob2_lr,0.2,0.8,T)
-classification_metrics(0.20, finalmode_ob2, "Complex LR", train.x, train.y,"lasso")
+classification_metrics(0.30, finalmode_ob2, "Complex LR", train.x, train.y,"lasso")
 ```
 ```{r}
 test.x <- model.matrix(fracture~ .*. , test_transformed)
@@ -720,7 +719,17 @@ classification_metrics(0.22, lda_fit, "LDA", train_transformed,train_transformed
 
 
 ```{r}
-preds_rf = make_predictions(lda_fit, test_transformed,test_transformed$fracture, "lda")
-plot_roc("LDA",preds_rf,0.2,0.8,T)
+preds_lda = make_predictions(lda_fit, test_transformed,test_transformed$fracture, "lda")
+plot_roc("LDA",preds_lda,0.2,0.8,T)
 classification_metrics(0.22, lda_fit, "LDA", test_transformed,test_transformed$fracture, "lda")
+```
+```{r}
+plot_roc("Baseline Lasso",preds_lasso,0.2,0.85,F, col="red")
+par(new=T)
+plot_roc("Complex Lasso",preds_ob2_lr,0.2,0.80,F, col="blue")
+par(new=T)
+plot_roc("Random Forrest",preds_rf,0.2,0.75,F, col="orange")
+par(new=T)
+plot_roc("LDA",preds_lda,0.2,0.7,F, col="green")
+legend(0.7, 0.3,legend = c("Baseline Lasso","Complex Lasso", "Random Forrest", "LDA"), fill=c("red","blue","orange","green"))
 ```
